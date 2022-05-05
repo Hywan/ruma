@@ -23,6 +23,8 @@ mod kw {
     syn::custom_keyword!(type_fragment);
     // The type to use for a state events' `state_key` field.
     syn::custom_keyword!(state_key_type);
+    // Another type string accepted for deserialization.
+    syn::custom_keyword!(alias);
 }
 
 /// Parses attributes for `*EventContent` derives.
@@ -47,6 +49,9 @@ enum EventMeta {
     TypeFragment,
 
     StateKeyType(Box<Type>),
+
+    /// Variant that holds alternate event type accepted for deserialization.
+    Alias(LitStr),
 }
 
 impl EventMeta {
@@ -67,6 +72,13 @@ impl EventMeta {
     fn get_state_key_type(&self) -> Option<&Type> {
         match self {
             Self::StateKeyType(ty) => Some(ty),
+            _ => None,
+        }
+    }
+
+    fn get_alias(&self) -> Option<&LitStr> {
+        match self {
+            Self::Alias(t) => Some(t),
             _ => None,
         }
     }
@@ -96,6 +108,10 @@ impl Parse for EventMeta {
             let _: kw::state_key_type = input.parse()?;
             let _: Token![=] = input.parse()?;
             input.parse().map(EventMeta::StateKeyType)
+        } else if lookahead.peek(kw::alias) {
+            let _: kw::alias = input.parse()?;
+            let _: Token![=] = input.parse()?;
+            input.parse().map(EventMeta::Alias)
         } else {
             Err(lookahead.error())
         }
@@ -119,6 +135,10 @@ impl MetaAttrs {
 
     fn get_state_key_type(&self) -> Option<&Type> {
         self.0.iter().find_map(|a| a.get_state_key_type())
+    }
+
+    fn get_aliases(&self) -> impl Iterator<Item = &LitStr> {
+        self.0.iter().filter_map(|a| a.get_alias())
     }
 }
 
@@ -227,6 +247,8 @@ pub fn expand_event_content(
         ));
     }
 
+    let aliases: Vec<_> = content_attr.iter().flat_map(|attrs| attrs.get_aliases()).collect();
+
     // We only generate redacted content structs for state and message-like events
     let redacted_event_content = needs_redacted(&content_attr, event_kind).then(|| {
         generate_redacted_event_content(
@@ -235,6 +257,7 @@ pub fn expand_event_content(
             event_type,
             event_kind,
             state_key_type.as_ref(),
+            &aliases,
             ruma_common,
         )
         .unwrap_or_else(syn::Error::into_compile_error)
@@ -246,6 +269,7 @@ pub fn expand_event_content(
         event_type,
         event_kind,
         state_key_type.as_ref(),
+        &aliases,
         ruma_common,
     )
     .unwrap_or_else(syn::Error::into_compile_error);
@@ -270,6 +294,7 @@ fn generate_redacted_event_content<'a>(
     event_type: &LitStr,
     event_kind: Option<EventKind>,
     state_key_type: Option<&TokenStream>,
+    aliases: &[&LitStr],
     ruma_common: &TokenStream,
 ) -> syn::Result<TokenStream> {
     assert!(
@@ -354,6 +379,7 @@ fn generate_redacted_event_content<'a>(
         event_type,
         event_kind,
         state_key_type,
+        aliases,
         ruma_common,
     )
     .unwrap_or_else(syn::Error::into_compile_error);
@@ -361,6 +387,12 @@ fn generate_redacted_event_content<'a>(
     let static_event_content_impl = event_kind.map(|k| {
         generate_static_event_content_impl(&redacted_ident, k, true, event_type, ruma_common)
     });
+
+    let mut event_types = aliases.to_owned();
+    event_types.push(event_type);
+    let event_types = quote! {
+        [#(#event_types,)*]
+    };
 
     Ok(quote! {
         // this is the non redacted event content's impl
@@ -387,9 +419,9 @@ fn generate_redacted_event_content<'a>(
         #[automatically_derived]
         impl #ruma_common::events::RedactedEventContent for #redacted_ident {
             fn empty(ev_type: &str) -> #serde_json::Result<Self> {
-                if ev_type != #event_type {
+                if !#event_types.contains(&ev_type) {
                     return Err(#serde::de::Error::custom(
-                        format!("expected event type `{}`, found `{}`", #event_type, ev_type)
+                        format!("expected event type as one of `{:?}`, found `{}`", #event_types, ev_type)
                     ));
                 }
 
@@ -476,6 +508,7 @@ fn generate_event_content_impl<'a>(
     event_type: &LitStr,
     event_kind: Option<EventKind>,
     state_key_type: Option<&TokenStream>,
+    aliases: &[&'a LitStr],
     ruma_common: &TokenStream,
 ) -> syn::Result<TokenStream> {
     let serde = quote! { #ruma_common::exports::serde };
@@ -559,6 +592,12 @@ fn generate_event_content_impl<'a>(
         }
     });
 
+    let mut event_types = aliases.to_owned();
+    event_types.push(event_type);
+    let event_types = quote! {
+        [#(#event_types,)*]
+    };
+
     Ok(quote! {
         #event_type_ty_decl
 
@@ -574,9 +613,9 @@ fn generate_event_content_impl<'a>(
                 ev_type: &::std::primitive::str,
                 content: &#serde_json::value::RawValue,
             ) -> #serde_json::Result<Self> {
-                if ev_type != #event_type {
+                if !#event_types.contains(&ev_type) {
                     return ::std::result::Result::Err(#serde::de::Error::custom(
-                        ::std::format!("expected event type `{}`, found `{}`", #event_type, ev_type)
+                        ::std::format!("expected event type as one of `{:?}`, found `{}`", #event_types, ev_type)
                     ));
                 }
 

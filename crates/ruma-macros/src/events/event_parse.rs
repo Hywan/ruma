@@ -7,6 +7,7 @@ use quote::{format_ident, IdentFragment};
 use syn::{
     braced,
     parse::{self, Parse, ParseStream},
+    punctuated::Punctuated,
     Attribute, Ident, LitStr, Path, Token,
 };
 
@@ -14,6 +15,7 @@ use syn::{
 mod kw {
     syn::custom_keyword!(kind);
     syn::custom_keyword!(events);
+    syn::custom_keyword!(alias);
 }
 
 // If the variants of this enum change `to_event_path` needs to be updated as well.
@@ -230,18 +232,32 @@ pub fn to_kind_variation(ident: &Ident) -> Option<(EventKind, EventKindVariation
 
 pub struct EventEnumEntry {
     pub attrs: Vec<Attribute>,
+    pub aliases: Vec<LitStr>,
     pub ev_type: LitStr,
     pub ev_path: Path,
 }
 
 impl Parse for EventEnumEntry {
     fn parse(input: ParseStream<'_>) -> syn::Result<Self> {
-        let attrs = input.call(Attribute::parse_outer)?;
+        let (ruma_enum_attrs, attrs) = input
+            .call(Attribute::parse_outer)?
+            .into_iter()
+            .partition::<Vec<_>, _>(|attr| attr.path.is_ident("ruma_enum"));
         let ev_type: LitStr = input.parse()?;
         let _: Token![=>] = input.parse()?;
         let ev_path = input.call(Path::parse_mod_style)?;
 
-        Ok(Self { attrs, ev_type, ev_path })
+        let mut aliases = Vec::with_capacity(ruma_enum_attrs.len());
+        for attr in ruma_enum_attrs {
+            let mut enum_attrs = attr
+                .parse_args_with(Punctuated::<EventEnumAliasAttr, Token![,]>::parse_terminated)?
+                .into_iter()
+                .map(|alias| alias.into_inner())
+                .collect();
+            aliases.append(&mut enum_attrs);
+        }
+
+        Ok(Self { attrs, aliases, ev_type, ev_path })
     }
 }
 
@@ -283,5 +299,22 @@ impl Parse for EventEnumInput {
             enums.push(EventEnumDecl { attrs, kind, events });
         }
         Ok(EventEnumInput { enums })
+    }
+}
+
+pub struct EventEnumAliasAttr(LitStr);
+
+impl EventEnumAliasAttr {
+    pub fn into_inner(self) -> LitStr {
+        self.0
+    }
+}
+
+impl Parse for EventEnumAliasAttr {
+    fn parse(input: ParseStream<'_>) -> syn::Result<Self> {
+        let _: kw::alias = input.parse()?;
+        let _: Token![=] = input.parse()?;
+        let s: LitStr = input.parse()?;
+        Ok(Self(s))
     }
 }

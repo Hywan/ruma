@@ -37,6 +37,7 @@ pub fn expand_event_type_enum(
     }
     let presence = vec![EventEnumEntry {
         attrs: vec![],
+        aliases: vec![],
         ev_type: LitStr::new("m.presence", Span::call_site()),
         ev_path: parse_quote! { #ruma_common::events::presence },
     }];
@@ -139,13 +140,16 @@ fn generate_enum(
         })
         .collect::<syn::Result<_>>()?;
 
-    let from_str_match_arms: Vec<_> = deduped
-        .iter()
-        .map(|e| {
-            let v = e.to_variant()?;
-            let ctor = v.ctor(quote! { Self });
+    let mut from_str_match_arms = Vec::with_capacity(deduped.len());
+    for event in deduped.iter() {
+        let v = event.to_variant()?;
+        let ctor = v.ctor(quote! { Self });
 
-            let match_arm = if let Some(prefix) = e.ev_type.value().strip_suffix('*') {
+        let mut ev_types = event.aliases.clone();
+        ev_types.push(event.ev_type.clone());
+
+        for ev_type in ev_types {
+            let match_arm = if let Some(prefix) = ev_type.value().strip_suffix('*') {
                 quote! {
                     // Use if-let guard once available
                     _s if _s.starts_with(#prefix) => {
@@ -153,14 +157,13 @@ fn generate_enum(
                     }
                 }
             } else {
-                let t = &e.ev_type;
-                quote! { #t => #ctor }
+                quote! { #ev_type => #ctor }
             };
 
-            let attrs = &e.attrs;
-            Ok(quote! { #(#attrs)* #match_arm })
-        })
-        .collect::<syn::Result<_>>()?;
+            let attrs = &event.attrs;
+            from_str_match_arms.push(quote! { #(#attrs)* #match_arm });
+        }
+    }
 
     let from_ident_for_room = if ident == "StateEventType" || ident == "MessageLikeEventType" {
         let match_arms: Vec<_> = deduped
