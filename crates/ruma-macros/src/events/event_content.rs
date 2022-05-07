@@ -248,6 +248,14 @@ pub fn expand_event_content(
     }
 
     let aliases: Vec<_> = content_attr.iter().flat_map(|attrs| attrs.get_aliases()).collect();
+    for alias in aliases.iter() {
+        if alias.value().ends_with(".*") != prefix.is_some() {
+            return Err(syn::Error::new_spanned(
+                event_type,
+                "aliases should have the same `.*` suffix, or lack thereof, as the main event type",
+            ));
+        }
+    }
 
     // We only generate redacted content structs for state and message-like events
     let redacted_event_content = needs_redacted(&content_attr, event_kind).then(|| {
