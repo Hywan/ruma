@@ -246,6 +246,7 @@ impl Parse for EventEnumEntry {
         let ev_type: LitStr = input.parse()?;
         let _: Token![=>] = input.parse()?;
         let ev_path = input.call(Path::parse_mod_style)?;
+        let has_suffix = ev_type.value().ends_with(".*");
 
         let mut aliases = Vec::with_capacity(ruma_enum_attrs.len());
         for attr in ruma_enum_attrs {
@@ -253,7 +254,17 @@ impl Parse for EventEnumEntry {
                 .parse_args_with(Punctuated::<EventEnumAliasAttr, Token![,]>::parse_terminated)?
                 .into_iter()
                 .map(|alias| alias.into_inner())
-                .collect();
+                .map(|alias| {
+                    if alias.value().ends_with(".*") == has_suffix {
+                        Ok(alias)
+                    } else {
+                        Err(syn::Error::new_spanned(
+                            &attr,
+                            "aliases should have the same `.*` suffix, or lack thereof, as the main event type",
+                        ))
+                    }
+                })
+                .collect::<syn::Result<_>>()?;
             aliases.append(&mut enum_attrs);
         }
 

@@ -1,6 +1,6 @@
 //! Implementation of event enum and event content enum macros.
 
-use std::fmt;
+use std::{fmt, iter::zip};
 
 use proc_macro2::{Span, TokenStream};
 use quote::{format_ident, quote, IdentFragment, ToTokens};
@@ -170,28 +170,27 @@ fn expand_deserialize_impl(
 
     let ident = kind.to_event_enum_ident(var.into())?;
 
-    let mut match_arms = Vec::with_capacity(events.len());
-    for event in events.iter() {
-        let variant = event.to_variant()?;
-        let variant_attrs = {
-            let attrs = &variant.attrs;
-            quote! { #(#attrs)* }
-        };
-        let self_variant = variant.ctor(quote! { Self });
-        let content = to_event_path(event.stable_name()?, &event.ev_path, kind, var);
-        let mut ev_types = event.aliases.clone();
-        ev_types.push(event.ev_type.clone());
+    let match_arms: TokenStream = events
+        .iter()
+        .map(|event| {
+            let variant = event.to_variant()?;
+            let variant_attrs = {
+                let attrs = &variant.attrs;
+                quote! { #(#attrs)* }
+            };
+            let self_variant = variant.ctor(quote! { Self });
+            let content = to_event_path(event.stable_name()?, &event.ev_path, kind, var);
+            let ev_types = event.aliases.iter().chain([&event.ev_type]);
 
-        for ev_type in ev_types {
-            match_arms.push(quote! {
-                #variant_attrs #ev_type => {
+            Ok(quote! {
+                #variant_attrs #(#ev_types)|* => {
                     let event = #serde_json::from_str::<#content>(json.get())
                         .map_err(D::Error::custom)?;
                     Ok(#self_variant(event))
                 },
-            });
-        }
-    }
+            })
+        })
+        .collect::<syn::Result<_>>()?;
 
     Ok(quote! {
         #[allow(unused_qualifications)]
@@ -207,7 +206,7 @@ fn expand_deserialize_impl(
                     #ruma_common::serde::from_raw_json_value(&json)?;
 
                 match &*ev_type {
-                    #(#match_arms)*
+                    #match_arms
                     _ => {
                         let event = #serde_json::from_str(json.get()).map_err(D::Error::custom)?;
                         Ok(Self::_Custom(event))
@@ -320,38 +319,43 @@ fn expand_content_enum(
 
     let event_type_enum = kind.to_event_type_enum();
 
-    let mut content = Vec::with_capacity(events.len());
-    let mut event_type_match_arms = Vec::with_capacity(events.len());
-    for (i, event) in events.iter().enumerate() {
-        let stable_name = event.stable_name()?;
-        let variant = &variants[i];
-        let ev_content = to_event_content_path(kind, stable_name, &event.ev_path, None);
+    let content: Vec<_> = events
+        .iter()
+        .map(|event| {
+            let stable_name = event.stable_name()?;
+            Ok(to_event_content_path(kind, stable_name, &event.ev_path, None))
+        })
+        .collect::<syn::Result<_>>()?;
+    let event_type_match_arms: TokenStream = zip(zip(events, variants), &content)
+        .map(|((event, variant), ev_content)| {
+            let variant_attrs = {
+                let attrs = &variant.attrs;
+                quote! { #(#attrs)* }
+            };
+            let variant_ctor = variant.ctor(quote! { Self });
 
-        let variant_attrs = {
-            let attrs = &variant.attrs;
-            quote! { #(#attrs)* }
-        };
-        let variant_ctor = variant.ctor(quote! { Self });
-
-        let mut ev_types = event.aliases.clone();
-        ev_types.push(event.ev_type.clone());
-
-        for ev_type in ev_types {
-            let ev_ty = if let Some(prefix) = ev_type.value().strip_suffix(".*") {
-                quote! { _s if _s.starts_with(#prefix) }
+            let ev_types = event.aliases.iter().chain([&event.ev_type]);
+            let ev_types = if event.ev_type.value().ends_with(".*") {
+                let ev_types = ev_types.map(|ev_type| {
+                    ev_type
+                        .value()
+                        .strip_suffix(".*")
+                        .expect("aliases have already been checked to have the same suffix")
+                        .to_owned()
+                });
+                quote! { _s if #(_s.starts_with(#ev_types))||* }
             } else {
-                quote! { #ev_type }
+                quote! { #(#ev_types)|* }
             };
 
-            event_type_match_arms.push(quote! {
-                #variant_attrs #ev_ty => {
+            Ok(quote! {
+                #variant_attrs #ev_types => {
                     let content = #ev_content::from_parts(event_type, input)?;
                     ::std::result::Result::Ok(#variant_ctor(content))
-                }
-            });
-        }
-        content.push(ev_content);
-    }
+                },
+            })
+        })
+        .collect::<syn::Result<_>>()?;
 
     let variant_decls = variants.iter().map(|v| v.decl()).collect::<Vec<_>>();
     let variant_arms = variants.iter().map(|v| v.match_arm(quote! { Self })).collect::<Vec<_>>();
@@ -395,7 +399,7 @@ fn expand_content_enum(
                 input: &#serde_json::value::RawValue,
             ) -> #serde_json::Result<Self> {
                 match event_type {
-                    #(#event_type_match_arms)*
+                    #event_type_match_arms
                     ty => {
                         ::std::result::Result::Ok(Self::_Custom {
                             event_type: crate::PrivOwnedStr(ty.into()),
@@ -710,13 +714,13 @@ impl EventEnumEntry {
             #[doc = #stable_name]
         };
 
-        if &self.ev_type != stable_name {
+        if self.ev_type != *stable_name {
             let unstable_name =
                 format!("This variant uses the unstable type `{}`.", self.ev_type.value());
 
             doc.extend(quote! {
-                    #[doc = ""]
-                    #[doc = #unstable_name]
+                #[doc = ""]
+                #[doc = #unstable_name]
             });
         }
 
@@ -728,8 +732,8 @@ impl EventEnumEntry {
                     self.aliases[0].value()
                 );
                 doc.extend(quote! {
-                        #[doc = ""]
-                        #[doc = #alias]
+                    #[doc = ""]
+                    #[doc = #alias]
                 });
             }
             _ => {
@@ -742,8 +746,8 @@ impl EventEnumEntry {
                         .join(", ")
                 );
                 doc.extend(quote! {
-                        #[doc = ""]
-                        #[doc = #aliases]
+                    #[doc = ""]
+                    #[doc = #aliases]
                 });
             }
         }
