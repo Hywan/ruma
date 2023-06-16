@@ -562,6 +562,22 @@ pub struct ToDeviceConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub enabled: Option<bool>,
 
+    /// On which lists the extension must be applied to.
+    ///
+    /// `None` means `lists` is absent, which is equivalent to `Some(vec!["*".to_owned()])`
+    /// according to the MSC. `Some(Vec::new())` (some empty vec) means the extension
+    /// must not process any lists. Sticky.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lists: Option<Vec<String>>,
+
+    /// On which room subscriptions the extension must be applied to.
+    ///
+    /// `None` means `rooms` is absent, which is equivalent to `Some(vec!["*".to_owned()])`
+    /// according to the MSC.`. `Some(Vec::new())` (some empty vec) means the extension must not
+    /// process any specific rooms. Sticky.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rooms: Option<Vec<String>>,
+
     /// Max number of to-device messages per response.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<UInt>,
@@ -601,6 +617,22 @@ pub struct E2EEConfig {
     /// Activate or deactivate this extension. Sticky.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub enabled: Option<bool>,
+
+    /// On which lists the extension must be applied to.
+    ///
+    /// `None` means `lists` is absent, which is equivalent to `Some(vec!["*".to_owned()])`
+    /// according to the MSC. `Some(Vec::new())` (some empty vec) means the extension
+    /// must not process any lists. Sticky.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lists: Option<Vec<String>>,
+
+    /// On which room subscriptions the extension must be applied to.
+    ///
+    /// `None` means `rooms` is absent, which is equivalent to `Some(vec!["*".to_owned()])`
+    /// according to the MSC.`. `Some(Vec::new())` (some empty vec) means the extension must not
+    /// process any specific rooms. Sticky.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rooms: Option<Vec<String>>,
 }
 
 impl E2EEConfig {
@@ -655,6 +687,22 @@ pub struct AccountDataConfig {
     /// Activate or deactivate this extension. Sticky.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub enabled: Option<bool>,
+
+    /// On which lists the extension must be applied to.
+    ///
+    /// `None` means `lists` is absent, which is equivalent to `Some(vec!["*".to_owned()])`
+    /// according to the MSC. `Some(Vec::new())` (some empty vec) means the extension
+    /// must not process any lists. Sticky.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lists: Option<Vec<String>>,
+
+    /// On which room subscriptions the extension must be applied to.
+    ///
+    /// `None` means `rooms` is absent, which is equivalent to `Some(vec!["*".to_owned()])`
+    /// according to the MSC.`. `Some(Vec::new())` (some empty vec) means the extension must not
+    /// process any specific rooms. Sticky.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rooms: Option<Vec<String>>,
 }
 
 impl AccountDataConfig {
@@ -696,6 +744,22 @@ pub struct ReceiptsConfig {
     /// Activate or deactivate this extension. Sticky.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub enabled: Option<bool>,
+
+    /// On which lists the extension must be applied to.
+    ///
+    /// `None` means `lists` is absent, which is equivalent to `Some(vec!["*".to_owned()])`
+    /// according to the MSC. `Some(Vec::new())` (some empty vec) means the extension
+    /// must not process any lists. Sticky.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lists: Option<Vec<String>>,
+
+    /// On which room subscriptions the extension must be applied to.
+    ///
+    /// `None` means `rooms` is absent, which is equivalent to `Some(vec!["*".to_owned()])`
+    /// according to the MSC.`. `Some(Vec::new())` (some empty vec) means the extension must not
+    /// process any specific rooms. Sticky.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rooms: Option<Vec<String>>,
 }
 
 impl ReceiptsConfig {
@@ -733,6 +797,22 @@ pub struct TypingConfig {
     /// Activate or deactivate this extension. Sticky.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub enabled: Option<bool>,
+
+    /// On which lists the extension must be applied to.
+    ///
+    /// `None` means `lists` is absent, which is equivalent to `Some(vec!["*".to_owned()])`
+    /// according to the MSC. `Some(Vec::new())` (some empty vec) means the extension
+    /// must not process any lists. Sticky.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lists: Option<Vec<String>>,
+
+    /// On which room subscriptions the extension must be applied to.
+    ///
+    /// `None` means `rooms` is absent, which is equivalent to `Some(vec!["*".to_owned()])`
+    /// according to the MSC.`. `Some(Vec::new())` (some empty vec) means the extension must not
+    /// process any specific rooms. Sticky.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rooms: Option<Vec<String>>,
 }
 
 impl TypingConfig {
