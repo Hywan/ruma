@@ -13,6 +13,7 @@ Improvements:
 - Add support for media download redirects (MSC3860 / Matrix 1.7)
 - Stabilize support for asynchronous media uploads (MSC2246 / Matrix 1.7)
 - Add support for the appservice ping mechanism (MSC 2659 / Matrix 1.7)
+- Add support for `lists` and `rooms` in Sliding Sync extensions (MSC 3575)
 
 # 0.16.2
 
